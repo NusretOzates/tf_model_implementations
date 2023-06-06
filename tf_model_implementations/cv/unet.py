@@ -15,8 +15,8 @@ class EncoderBlock(keras.layers.Layer):
 
     def call(self, inputs, *args, **kwargs):
 
-        result = self.conv_1(inputs)
-        residual = self.conv_2(result)
+        residual = self.conv_1(inputs)
+        residual = self.conv_2(residual)
         result = self.max_pool(residual)
 
         return residual, result
