@@ -1,7 +1,9 @@
-from .base import BaseModel
 import tensorflow as tf
-class NearestNeighbor(BaseModel):
 
+from .base import BaseModel
+
+
+class NearestNeighbor(BaseModel):
     def __init__(self, feature_extractor: tf.keras.Model):
         super().__init__(feature_extractor)
         self.labels = None
@@ -13,9 +15,7 @@ class NearestNeighbor(BaseModel):
         self.features = self.feature_extractor.predict(x)
         self.labels = y
 
-
     def predict(self, dataset: tf.data.Dataset):
-
         feature_vector = self.feature_extractor.predict(dataset)
 
         # Get the distance between the feature vector and the training features
@@ -31,20 +31,18 @@ class NearestNeighbor(BaseModel):
 
 
 class KNearestNeighbor(NearestNeighbor):
-
     def __init__(self, feature_extractor: tf.keras.Model, k: int):
         super().__init__(feature_extractor)
         self.k = k
 
     def predict(self, dataset: tf.data.Dataset):
-
         feature_vector = self.feature_extractor.predict(dataset)
 
         # Get the distance between the feature vector and the training features
         distances = tf.reduce_sum(tf.square(feature_vector - self.features), axis=1)
 
         # Get the index of the minimum distance
-        min_index = tf.argsort(distances, axis=1)[:, :self.k]
+        min_index = tf.argsort(distances, axis=1)[:, : self.k]
 
         # Get the label of the minimum distance
         labels = tf.gather(self.labels, min_index)
@@ -58,4 +56,3 @@ class KNearestNeighbor(NearestNeighbor):
         labels = tf.gather(labels, tf.argmax(counts))
 
         return labels
-

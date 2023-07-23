@@ -1,20 +1,15 @@
+from keras.layers import Concatenate, Conv2D, Conv2DTranspose, MaxPool2D
 from tensorflow import keras
-from keras.layers import Conv2D, Conv2DTranspose, MaxPool2D, Concatenate
 
 
 class EncoderBlock(keras.layers.Layer):
     def __init__(self, filters: int, **kwargs):
         super().__init__(**kwargs)
-        self.conv_1 = Conv2D(
-            filters, kernel_size=3, padding="same", activation="relu"
-        )
-        self.conv_2 = Conv2D(
-            filters, kernel_size=3, padding="same", activation="relu"
-        )
+        self.conv_1 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
+        self.conv_2 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
         self.max_pool = MaxPool2D()
 
     def call(self, inputs, *args, **kwargs):
-
         residual = self.conv_1(inputs)
         residual = self.conv_2(residual)
         result = self.max_pool(residual)
@@ -25,17 +20,12 @@ class EncoderBlock(keras.layers.Layer):
 class DecoderBlock(keras.layers.Layer):
     def __init__(self, filters: int, **kwargs):
         super().__init__(**kwargs)
-        self.conv_1 = Conv2D(
-            filters, kernel_size=3, padding="same", activation="relu"
-        )
-        self.conv_2 = Conv2D(
-            filters, kernel_size=3, padding="same", activation="relu"
-        )
+        self.conv_1 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
+        self.conv_2 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
         self.conv_t = Conv2DTranspose(filters, 2, strides=2, padding="same")
         self.concat = Concatenate(axis=3)
 
     def call(self, inputs, *args, **kwargs):
-
         residual = inputs["residual"]
         previous_layer = inputs["previous"]
 
