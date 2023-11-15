@@ -1,4 +1,3 @@
-# !pip3 install opendatasets --upgrade --quiet
 # https://arxiv.org/pdf/1511.06434.pdf
 import keras
 import numpy as np
@@ -122,13 +121,15 @@ def train(images):
 
     discriminator_mean.update_state(disc_loss_real + disc_loss_fake)
 
-    # Calculate gradients
+    # Calculate gradients for both the real and fake images
     gradients_of_discriminator_fake = disc_tape_fake.gradient(
         disc_loss_fake, discriminator.trainable_variables
     )
     gradients_of_discriminator_real = disc_tape_real.gradient(
         disc_loss_real, discriminator.trainable_variables
     )
+
+    # Combine the gradients
     total = [
         a + b
         for a, b in zip(
