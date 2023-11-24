@@ -241,8 +241,6 @@ class Dino(Model):
                 self.teacher_temperature,
             )
 
-            loss /= tf.cast(self.accumulation_steps, loss.dtype)
-
             scaled_loss = self.optimizer.get_scaled_loss(loss)
 
         gradients = tape.gradient(scaled_loss, self.student_encoder.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
@@ -263,14 +261,15 @@ class Dino(Model):
 
     def apply_accumulated_gradients(self):
 
+        for variable in self.gradient_accumulator:
+            # Divide the accumulated gradients by the number of accumulation steps
+            variable.assign(tf.math.divide(variable, tf.cast(self.accumulation_steps, tf.float32)))
+
+
         self.optimizer.apply_gradients(
             zip(self.gradient_accumulator, self.student_encoder.trainable_variables)
         )
         self.accumulation_step_counter.assign(0)
-
-        for variable in self.gradient_accumulator:
-            variable.assign(tf.zeros_like(variable), read_value=False)
-
 
 
         # Update the teacher network
@@ -289,7 +288,6 @@ class Dino(Model):
 
         self.teacher_outputs.assign(tf.zeros_like(self.teacher_outputs))
 
-        tf.print("Gradients applied")
 
     # def test_step(self, data):
     #     first_globals, second_globals, local_projections = self.augmenter(data)
@@ -344,111 +342,6 @@ def create_dino_model(
         student_temperature=student_temperature,
         teacher_temperature=teacher_temperature,
     )
-
-
-# All images under this path will be used for training
-dataset_path = "/mnt/c/Users/mnusr/PycharmProjects/hcc_tests/big_image_example/processed_2"
-
-# All images under this path will be used for testing
-test_dataset_path = "/mnt/c/Users/mnusr/PycharmProjects/hcc_tests/datasets/hcc"
-
-train_dataset = tf.keras.preprocessing.image_dataset_from_directory(
-    dataset_path,
-    label_mode=None,
-    color_mode="rgb",
-    batch_size=BATCH_SIZE,
-    image_size=(1024, 1024),
-    shuffle=True,
-    seed=42,
-    interpolation="bicubic",
-).prefetch(tf.data.AUTOTUNE)
-
-validation_dataset = tf.keras.preprocessing.image_dataset_from_directory(
-    test_dataset_path,
-    label_mode='binary',
-    color_mode="rgb",
-    batch_size=BATCH_SIZE,
-    image_size=(1024, 1024),
-    shuffle=True,
-    seed=42,
-    validation_split=0.2,
-    subset="training",
-    interpolation="bicubic",
-).prefetch(tf.data.AUTOTUNE)
-
-test_dataset = tf.keras.preprocessing.image_dataset_from_directory(
-    test_dataset_path,
-    label_mode='binary',
-    color_mode="rgb",
-    batch_size=BATCH_SIZE,
-    image_size=(1024, 1024),
-    shuffle=True,
-    seed=42,
-    validation_split=0.2,
-    subset="validation",
-    interpolation="bicubic",
-).prefetch(tf.data.AUTOTUNE)
-
-teacher = ResNet(
-    rescale=True,
-    input_shape=(None, None, 3),
-    batch_count=BATCH_SIZE,
-    activations="gelu",
-)
-
-student = ResNet(
-    rescale=True,
-    input_shape=(None, None, 3),
-    batch_count=BATCH_SIZE,
-    activations="gelu",
-)
-
-model = create_dino_model(
-    student,
-    teacher,
-    global_crop_size=512,
-    local_crop_size=256,
-    local_augmentation_count=2
-)
-
-schedule = tf.keras.optimizers.schedules.CosineDecay(0.0005, 264 * 4, alpha=1e-6, warmup_target=0.0005,
-                                                     warmup_steps=264 * 1)
-
-optimizer = tf.keras.optimizers.Adam(schedule)
-
-scaled_optimizer = mixed_precision.LossScaleOptimizer(optimizer)
-
-model.compile(optimizer=scaled_optimizer, run_eagerly=False, jit_compile=False)
-
-model.fit(
-    train_dataset,
-    epochs=2,
-)
-
-del model, teacher
-
-student.trainable = False
-
-model_st = Sequential(
-    [
-        student,
-        layers.Dense(1),
-        layers.Activation("sigmoid", dtype=tf.float32)
-    ])
-
-optimizer = tf.keras.optimizers.Adam(0.00001)
-
-scaled_optimizer = mixed_precision.LossScaleOptimizer(optimizer)
-
-model_st.compile(optimizer=scaled_optimizer, run_eagerly=False, jit_compile=False,
-                 metrics=["accuracy"],
-                 loss="binary_crossentropy")
-
-model_st.fit(
-    validation_dataset,
-    validation_data=test_dataset,
-    epochs=10
-)
 
 
 # from tensorflow_datasets import load
