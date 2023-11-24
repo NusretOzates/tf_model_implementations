@@ -82,6 +82,7 @@ def resnet50(x: tf.Tensor, activation: str):
 
     return x
 
+
 # TODO: Make it more generic and add more options such as resnet50, resnet101, etc.
 def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu"):
     inputs = layers.Input(input_shape, batch_count)
@@ -91,9 +92,11 @@ def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu"):
     else:
         x = inputs
 
-    x = layers.Conv2D(64, 7, 2, padding="same")(x)
+    x = layers.ZeroPadding2D(padding=((3, 3), (3, 3)))(x)
+    x = layers.Conv2D(64, 7, 2)(x)
     x = layers.BatchNormalization(epsilon=1.001e-5)(x)
     x = layers.Activation(activations)(x)
+    x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
     x = layers.MaxPooling2D(3, 2)(x)
     x = resnet50(x, activations)
     outputs = layers.GlobalAveragePooling2D()(x)
@@ -103,48 +106,54 @@ def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu"):
     return model
 
 
-# TODO Clean up this code and move it to the test folder
-BATCH_SIZE = 8
-IMAGE_SIZE = 512
-base_model = ResNet(True, (IMAGE_SIZE, IMAGE_SIZE, 3), BATCH_SIZE, "elu")
-model = keras.models.Sequential([base_model, layers.Dense(1, activation="sigmoid")])
-
-model.compile(
-    tf.keras.optimizers.Adam(learning_rate=1e-5),
-    loss="binary_crossentropy",
-    metrics=[tf.keras.metrics.F1Score(average="weighted"), "accuracy"],
-    run_eagerly=False,
-)
-
-
-train = tf.keras.utils.image_dataset_from_directory(
-    "C:\\Users\\mnusr\\Documents\\hcc_data\\hcc_2048\\hcc_vs_inc\\train",
-    batch_size=BATCH_SIZE,
-    image_size=(IMAGE_SIZE, IMAGE_SIZE),
-    label_mode="binary",
-    class_names=["hcc", "inc"],
-    shuffle=True,
-    seed=42,
-).prefetch(tf.data.AUTOTUNE)
-
-validation = tf.keras.utils.image_dataset_from_directory(
-    "C:\\Users\\mnusr\\Documents\\hcc_data\\hcc_2048\\hcc_vs_inc\\val",
-    batch_size=BATCH_SIZE,
-    image_size=(IMAGE_SIZE, IMAGE_SIZE),
-    label_mode="binary",
-    class_names=["hcc", "inc"],
-    shuffle=False,
-)
-
-test = tf.keras.utils.image_dataset_from_directory(
-    "C:\\Users\\mnusr\\Documents\\hcc_data\\hcc_2048\\hcc_vs_inc\\test",
-    batch_size=BATCH_SIZE,
-    image_size=(IMAGE_SIZE, IMAGE_SIZE),
-    label_mode="binary",
-    class_names=["hcc", "inc"],
-    shuffle=False,
-)
-
-model.fit(train, epochs=5, validation_data=validation, class_weight={0: 0.60, 1: 0.40})
-
-model.evaluate(test)
+# import numpy as np
+# from tensorflow import keras
+# from keras import layers
+#
+# # Model / data parameters
+# num_classes = 10
+# input_shape = (28, 28, 1)
+#
+# # Load the data and split it between train and test sets
+# (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+#
+# # Scale images to the [0, 1] range
+# x_train = x_train.astype("float32") / 255
+# x_test = x_test.astype("float32") / 255
+# # Make sure images have shape (28, 28, 1)
+# x_train = np.expand_dims(x_train, -1)
+# x_test = np.expand_dims(x_test, -1)
+# print("x_train shape:", x_train.shape)
+# print(x_train.shape[0], "train samples")
+# print(x_test.shape[0], "test samples")
+#
+#
+# # convert class vectors to binary class matrices
+# y_train = keras.utils.to_categorical(y_train, num_classes)
+# y_test = keras.utils.to_categorical(y_test, num_classes)
+#
+# batch_size = 128
+# epochs = 15
+# model = keras.Sequential(
+#     [
+#         ResNet(
+#             rescale=False,
+#             input_shape=input_shape,
+#             batch_count=batch_size,
+#             activations="relu",
+#         ),
+#         layers.Dropout(0.5),
+#         layers.Dense(num_classes, activation="softmax"),
+#     ]
+# )
+#
+# model.summary()
+#
+#
+# model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+#
+# model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
+#
+# score = model.evaluate(x_test, y_test, verbose=0)
+# print("Test loss:", score[0])
+# print("Test accuracy:", score[1])
