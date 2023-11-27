@@ -13,12 +13,12 @@ from tensorflow import keras
 
 
 def batch_normalized_conv2d(
-    x: tf.Tensor,
-    filter_size: int,
-    kernel_size: int,
-    stride_size: int,
-    activation: str,
-    padding: str = "valid",
+        x: tf.Tensor,
+        filter_size: int,
+        kernel_size: int,
+        stride_size: int,
+        activation: str,
+        padding: str = "valid",
 ):
     x = layers.Conv2D(filter_size, kernel_size, stride_size, padding)(x)
     x = layers.BatchNormalization(epsilon=1.001e-5)(x)
@@ -27,11 +27,11 @@ def batch_normalized_conv2d(
 
 
 def residual_block(
-    x: tf.Tensor,
-    filter_size: int,
-    stride_size: int,
-    activation: str,
-    is_skip_connection: bool = False,
+        x: tf.Tensor,
+        filter_size: int,
+        stride_size: int,
+        activation: str,
+        is_skip_connection: bool = False,
 ):
     skip_connection = x
     if is_skip_connection:
@@ -58,7 +58,7 @@ def residual_block(
 
 
 def residual_stack(
-    x: tf.Tensor, filter_size: int, block_count: int, stride_size: int, activation: str
+        x: tf.Tensor, filter_size: int, block_count: int, stride_size: int, activation: str
 ):
     x = residual_block(
         x=x,
@@ -84,7 +84,7 @@ def resnet50(x: tf.Tensor, activation: str):
 
 
 # TODO: Make it more generic and add more options such as resnet50, resnet101, etc.
-def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu"):
+def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", pooling='max'):
     inputs = layers.Input(input_shape, batch_count)
     if rescale:
         x = layers.Rescaling(scale=1.0 / 127.5, offset=-1)(inputs)
@@ -99,12 +99,16 @@ def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu"):
     x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
     x = layers.MaxPooling2D(3, 2)(x)
     x = resnet50(x, activations)
-    outputs = layers.GlobalAveragePooling2D()(x)
+    if not pooling or pooling == 'max':
+        outputs = layers.GlobalMaxPooling2D()(x)
+    elif pooling == 'avg':
+        outputs = layers.GlobalAveragePooling2D()(x)
+    else:
+        outputs = layers.GlobalMaxPooling2D()(x)
 
     model = keras.Model(inputs=inputs, outputs=outputs)
 
     return model
-
 
 # import numpy as np
 # from tensorflow import keras
