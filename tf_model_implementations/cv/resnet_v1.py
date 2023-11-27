@@ -84,7 +84,7 @@ def resnet50(x: tf.Tensor, activation: str):
 
 
 # TODO: Make it more generic and add more options such as resnet50, resnet101, etc.
-def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", pooling='max'):
+def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", pooling='avg'):
     inputs = layers.Input(input_shape, batch_count)
     if rescale:
         x = layers.Rescaling(scale=1.0 / 127.5, offset=-1)(inputs)
@@ -104,7 +104,7 @@ def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", p
     elif pooling == 'avg':
         outputs = layers.GlobalAveragePooling2D()(x)
     else:
-        outputs = layers.GlobalMaxPooling2D()(x)
+        outputs = layers.GlobalAveragePooling2D()(x)
 
     model = keras.Model(inputs=inputs, outputs=outputs)
 
