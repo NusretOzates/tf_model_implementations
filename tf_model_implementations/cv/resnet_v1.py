@@ -10,6 +10,7 @@ Each residual block has two 3x3 convolutions with batch normalization and ReLU.
 import tensorflow as tf
 from keras import layers
 from tensorflow import keras
+from enum import Enum
 
 
 def batch_normalized_conv2d(
@@ -82,9 +83,40 @@ def resnet50(x: tf.Tensor, activation: str):
 
     return x
 
+def resnet16(x: tf.Tensor, activation: str):
+    x = residual_stack(x, 64, 2, 1, activation)
+    x = residual_stack(x, 128, 2, 2, activation)
+    x = residual_stack(x, 256, 2, 2, activation)
+    x = residual_stack(x, 512, 2, 2, activation)
+
+    return x
+
+def resnet101(x: tf.Tensor, activation: str):
+    x = residual_stack(x, 64, 3, 1, activation)
+    x = residual_stack(x, 128, 4, 2, activation)
+    x = residual_stack(x, 256, 23, 2, activation)
+    x = residual_stack(x, 512, 3, 2, activation)
+
+    return x
+
+def resnet152(x: tf.Tensor, activation: str):
+    x = residual_stack(x, 64, 3, 1, activation)
+    x = residual_stack(x, 128, 8, 2, activation)
+    x = residual_stack(x, 256, 36, 2, activation)
+    x = residual_stack(x, 512, 3, 2, activation)
+
+    return x
+
+class ResnetEnum(Enum):
+    resnet16 = 16
+    resnet50 = 50
+    resnet101 = 101
+    resnet152 = 152
+
+
 
 # TODO: Make it more generic and add more options such as resnet50, resnet101, etc.
-def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", pooling='avg'):
+def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", pooling='avg', resnet_version=ResnetEnum.resnet50):
     inputs = layers.Input(input_shape, batch_count)
     if rescale:
         x = layers.Rescaling(scale=1.0 / 127.5, offset=-1)(inputs)
@@ -98,7 +130,18 @@ def ResNet(rescale: bool, input_shape, batch_count, activations: str = "relu", p
     x = layers.Activation(activations)(x)
     x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
     x = layers.MaxPooling2D(3, 2)(x)
-    x = resnet50(x, activations)
+
+    if resnet_version == ResnetEnum.resnet16:
+        x = resnet16(x, activations)
+    elif resnet_version == ResnetEnum.resnet50:
+        x = resnet50(x, activations)
+    elif resnet_version == ResnetEnum.resnet101:
+        x = resnet101(x, activations)
+    elif resnet_version == ResnetEnum.resnet152:
+        x = resnet152(x, activations)
+    else:
+        raise ValueError("Invalid resnet version")
+
     if not pooling or pooling == 'max':
         outputs = layers.GlobalMaxPooling2D()(x)
     elif pooling == 'avg':
