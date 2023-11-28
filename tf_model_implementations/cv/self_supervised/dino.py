@@ -3,7 +3,7 @@ import os
 import logging
 import tensorflow as tf
 # tf.get_logger().setLevel(logging.ERROR)
-
+import keras_core as kc
 # Allow memory growth for the GPU
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -23,7 +23,7 @@ from keras_cv.layers import (
 from keras_core.ops import log_softmax, softmax, sum, mean
 from keras import Sequential, Model, layers
 
-from tf_model_implementations.cv.resnet_v1 import ResNet
+from tf_model_implementations.cv.resnet_v1 import ResNet, ResnetEnum
 
 # Activate mixed precision
 from keras import mixed_precision
@@ -152,7 +152,7 @@ class Dino(Model):
     ):
         super().__init__()
 
-        self.out_dim = 65536
+        self.out_dim = 100
         self.augmenter = augmenter
         self.student_model = student_model
         self.teacher_model = teacher_model
@@ -185,20 +185,35 @@ class Dino(Model):
             ]
         )
 
-        self.center = tf.Variable(tf.zeros((1, self.out_dim)), trainable=False)
+        # Make teacher has the same weights as student
+        for teacher, student in zip(
+                self.teacher_encoder.trainable_variables,
+                self.student_encoder.trainable_variables,
+        ):
+            teacher.assign(student)
+
+        #self.teacher_encoder.trainable = False
+
+        self.center = kc.Variable(tf.zeros((1, self.out_dim)), trainable=False)
+
+
+
         self.network_momentum = network_momentum
         self.center_momentum = center_momentum
         self.student_temperature = student_temperature
         self.teacher_temperature = teacher_temperature
         self.gradient_accumulator = [
-            tf.Variable(
-                tf.zeros_like(variable), trainable=False, synchronization=tf.VariableSynchronization.ON_READ
+            kc.Variable(
+                kc.ops.zeros_like(variable), trainable=False
             ) for variable in self.student_encoder.trainable_variables
         ]
 
-        self.accumulation_step_counter = tf.Variable(0, trainable=False, dtype=tf.int32)
-        self.accumulation_steps = tf.constant(128, dtype=tf.int32, name="accumulation_steps")
-        self.teacher_outputs = tf.Variable(tf.zeros((BATCH_SIZE, self.out_dim)), trainable=False)
+        self.accumulation_step_counter = kc.Variable(0, trainable=False, dtype=tf.int32)
+
+        # make accumulation steps a keras core constant
+        self.accumulation_steps = kc.ops.convert_to_tensor([[32]], dtype ="int32")
+
+        self.teacher_outputs = kc.Variable(tf.zeros((BATCH_SIZE, self.out_dim)), trainable=False)
         self.first_call = True
     def train_step(self, data):
 
@@ -250,8 +265,8 @@ class Dino(Model):
             self.gradient_accumulator[j].assign_add(gradients[j])
 
 
-        tf.cond(
-            tf.equal(self.accumulation_step_counter, self.accumulation_steps),
+        kc.ops.cond(
+            kc.ops.equal(self.accumulation_step_counter, self.accumulation_steps),
             self.apply_accumulated_gradients,
             lambda: None
         )
@@ -263,7 +278,7 @@ class Dino(Model):
 
         for variable in self.gradient_accumulator:
             # Divide the accumulated gradients by the number of accumulation steps
-            variable.assign(tf.math.divide(variable, tf.cast(self.accumulation_steps, tf.float32)))
+            variable.assign(kc.ops.divide(variable, kc.ops.cast(self.accumulation_steps, "float32")))
 
 
         self.optimizer.apply_gradients(
