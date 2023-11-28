@@ -278,7 +278,9 @@ class Dino(Model):
 
         for variable in self.gradient_accumulator:
             # Divide the accumulated gradients by the number of accumulation steps
-            variable.assign(kc.ops.divide(variable, kc.ops.cast(self.accumulation_steps, "float32")))
+            new_value = kc.ops.divide(variable, kc.ops.cast(self.accumulation_steps, "float32"))
+            new_value = kc.ops.reshape(new_value, variable.shape)
+            variable.assign(new_value)
 
 
         self.optimizer.apply_gradients(
