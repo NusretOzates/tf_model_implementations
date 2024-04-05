@@ -1,120 +1,141 @@
-from keras.layers import Concatenate, Conv2D, Conv2DTranspose, MaxPool2D
-from tensorflow import keras
-import tensorflow as tf
+import keras
+from keras.layers import Concatenate, Conv2D, Conv2DTranspose, MaxPool2D, GroupNormalization, Activation, Layer, Input
 
-tf.keras.mixed_precision.set_global_policy("mixed_float16")
+keras.mixed_precision.set_global_policy("mixed_float16")
 
-class EncoderBlock(keras.layers.Layer):
-    def __init__(self, filters: int, **kwargs):
+
+class EncoderBlock(Layer):
+
+    def __init__(self, filters: int, group_norm_depth: int, activation_func: str, **kwargs):
         super().__init__(**kwargs)
-        self.conv_1 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
-        self.conv_2 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
+        self.conv_1 = Conv2D(filters, kernel_size=(3, 3), padding='same')
+        self.normalization_1 = GroupNormalization(group_norm_depth)
+        self.activation_1 = Activation(activation_func)
+        self.conv_2 = Conv2D(filters, kernel_size=(3, 3), padding='same')
+        self.normalization_2 = GroupNormalization(group_norm_depth)
+        self.activation_2 = Activation(activation_func)
         self.max_pool = MaxPool2D()
 
+        self.filters = filters
+
     def call(self, inputs, *args, **kwargs):
-        residual = self.conv_1(inputs)
-        residual = self.conv_2(residual)
+        result = self.conv_1(inputs)
+        result = self.normalization_1(result)
+        result = self.activation_1(result)
+        residual = self.conv_2(result)
+        residual = self.normalization_2(residual)
+        residual = self.activation_2(residual)
+
         result = self.max_pool(residual)
 
         return residual, result
 
 
-class DecoderBlock(keras.layers.Layer):
-    def __init__(self, filters: int, **kwargs):
+class DecoderBlock(Layer):
+
+    def __init__(self, filters: int, group_norm_depth: int, activation_func: str, **kwargs):
         super().__init__(**kwargs)
-        self.conv_1 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
-        self.conv_2 = Conv2D(filters, kernel_size=3, padding="same", activation="relu")
-        self.conv_t = Conv2DTranspose(filters, 2, strides=2, padding="same")
+        self.conv_t = Conv2DTranspose(filters, 3, strides=2, padding='same')
+        self.normalization_0 = GroupNormalization(group_norm_depth)
+        self.activation_0 = Activation(activation_func)
+        self.conv_1 = Conv2D(filters, kernel_size=(3, 3), padding='same')
+        self.normalization_1 = GroupNormalization(group_norm_depth)
+        self.activation_1 = Activation(activation_func)
+        self.conv_2 = Conv2D(filters, kernel_size=(3, 3), padding='same')
+        self.normalization_2 = GroupNormalization(group_norm_depth)
+        self.activation_2 = Activation(activation_func)
+
         self.concat = Concatenate(axis=3)
 
-    def call(self, inputs, *args, **kwargs):
-        residual = inputs["residual"]
-        previous_layer = inputs["previous"]
+        self.filters = filters
 
+    def call(self, inputs, *args, **kwargs):
+        residual = inputs['residual']
+        previous_layer = inputs['previous']
 
         result = self.conv_t(previous_layer)
-
-        # Make sure that the residual and the previous layer have the same shape
-        residual = tf.image.resize(residual, tf.shape(result)[1:3])
-
+        result = self.normalization_0(result)
+        result = self.activation_0(result)
         result = self.concat([result, residual])
+
         result = self.conv_1(result)
+        result = self.normalization_1(result)
+        result = self.activation_1(result)
         result = self.conv_2(result)
+        result = self.normalization_2(result)
+        result = self.activation_2(result)
 
         return result
 
 
-class Unet(keras.models.Model):
-    def __init__(self, depth: int, num_classes: int, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.encoders = []
-        self.decoders = []
-        i = 64
-        while depth > 0:
-            self.encoders.append(EncoderBlock(i))
-            self.decoders.insert(0, DecoderBlock(i))
-            i *= 2
-            depth -= 1
+def unet(depth: int, num_classes: int, group_norm_depth: int = 32, activation_func: str = 'relu'):
+    i = 64
+    inputs = Input(shape=(480, 640, 3))
+    result = inputs
+    encoder_results = []
 
-        # Bottleneck
-        self.conv_1 = Conv2D(i, kernel_size=3, padding="same", activation="relu")
-        self.conv_2 = Conv2D(i, kernel_size=3, padding="same", activation="relu")
+    for d in range(depth):
+        residual, result = EncoderBlock(i, name=f'encoder_{d}', group_norm_depth=group_norm_depth, activation_func=activation_func)(result)
+        encoder_results.append(residual)
+        i *= 2
 
-        activation = "sigmoid" if num_classes == 1 else "softmax"
-        self.final = Conv2D(num_classes, 3, padding="same")
-        self.activation = keras.layers.Activation(activation,dtype=tf.float32)
+    # Apply the bottleneck
+    result = Conv2D(i, kernel_size=(3, 3), padding='same')(result)
+    result = GroupNormalization(group_norm_depth)(result)
+    result = Activation(activation_func)(result)
+    result = Conv2D(i, kernel_size=(3, 3), padding='same')(result)
+    result = GroupNormalization(group_norm_depth)(result)
+    result = Activation(activation_func)(result)
 
-    def call(self, inputs, training=None, mask=None):
-        result = inputs
-        encoder_results = []
-        for encoder in self.encoders:
-            residual, result = encoder(result)
-            encoder_results.append(residual)
+    # We will give the results in reversed order.
+    encoder_results.reverse()
 
-        # Apply the bottleneck
-        result = self.conv_1(result)
-        result = self.conv_2(result)
+    for d in range(depth):
+        decoder_inputs = {
+            'residual': encoder_results[d],
+            'previous': result
+        }
 
-        for encoder_result, decoder in zip(reversed(encoder_results), self.decoders):
-            decoder_inputs = {"residual": encoder_result, "previous": result}
-            result = decoder(decoder_inputs)
+        result = DecoderBlock(i, name=f'decoder_{d}', group_norm_depth=group_norm_depth, activation_func=activation_func )(decoder_inputs)
 
-        result = self.final(result)
+        i //= 2
 
-        # Make sure that the result is in same shape as the input
-        result = tf.image.resize(result, tf.shape(inputs)[1:3])
+    result = Conv2D(num_classes, 1, padding='same', )(result)
+    result = Activation('sigmoid', dtype='float32')(result)
 
-        result = self.activation(result)
-
-        return result
+    return keras.models.Model(inputs=inputs, outputs=result)
 
 
-model = Unet(4, 1)
-model.compile(
-    optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"], run_eagerly=False
-)
-
-
-# Download a segmentation dataset
-import tensorflow_datasets as tfds
-
-dataset, info = tfds.load("oxford_iiit_pet:3.*.*", with_info=True)
-train = dataset["train"]
-test = dataset["test"]
-
-# Prepare the dataset
-def prepare_data(data):
-    def prepare_sample(sample):
-        image = tf.cast(sample["image"], tf.float32) / 255.0
-        mask = sample["segmentation_mask"]
-        mask -= 1
-        return image, mask
-
-    return data.map(prepare_sample).prefetch(tf.data.AUTOTUNE)
-
-
-train = prepare_data(train).batch(1)
-test = prepare_data(test).batch(1)
-
-# Train the model
-model.fit(train, epochs=5, validation_data=test)
+# model = unet(4, 1)
+# model.compile(
+#     optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+# )
+#
+# # Download a segmentation dataset
+# import tensorflow_datasets as tfds
+# import tensorflow as tf
+#
+# dataset, info = tfds.load("oxford_iiit_pet:3.*.*", with_info=True)
+# train = dataset["train"]
+# test = dataset["test"]
+#
+#
+# # Prepare the dataset
+# def prepare_data(data):
+#     def prepare_sample(sample):
+#         image = tf.cast(sample["image"], tf.float32) / 255.0
+#         mask = sample["segmentation_mask"]
+#         mask -= 1
+#         # Resize to (480, 640)
+#         image = tf.image.resize(image, (480, 640))
+#         mask = tf.image.resize(mask, (480, 640))
+#         return image, mask
+#
+#     return data.map(prepare_sample).prefetch(tf.data.AUTOTUNE)
+#
+#
+# train = prepare_data(train).batch(1)
+# test = prepare_data(test).batch(1)
+#
+# # Train the model
+# model.fit(train, epochs=5, validation_data=test)
