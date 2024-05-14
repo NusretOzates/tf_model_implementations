@@ -17,19 +17,29 @@ class EncoderBlock(Layer):
         self.max_pool = MaxPool2D()
 
         self.filters = filters
+        self.group_norm_depth = group_norm_depth
+        self.activation_func = activation_func
 
-    def call(self, inputs, *args, **kwargs):
+    def call(self, inputs):
         result = self.conv_1(inputs)
         result = self.normalization_1(result)
         result = self.activation_1(result)
-        residual = self.conv_2(result)
-        residual = self.normalization_2(residual)
-        residual = self.activation_2(residual)
+        result = self.conv_2(result)
+        result = self.normalization_2(result)
+        residual = self.activation_2(result)
 
-        result = self.max_pool(residual)
+        result = self.max_pool(result)
 
         return residual, result
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'filters': self.filters,
+            'group_norm_depth': self.group_norm_depth,
+            'activation_func': self.activation_func
+        })
+        return config
 
 class DecoderBlock(Layer):
 
@@ -48,6 +58,8 @@ class DecoderBlock(Layer):
         self.concat = Concatenate(axis=3)
 
         self.filters = filters
+        self.group_norm_depth = group_norm_depth
+        self.activation_func = activation_func
 
     def call(self, inputs, *args, **kwargs):
         residual = inputs['residual']
@@ -66,6 +78,15 @@ class DecoderBlock(Layer):
         result = self.activation_2(result)
 
         return result
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'filters': self.filters,
+            'group_norm_depth': self.group_norm_depth,
+            'activation_func': self.activation_func
+        })
+        return config
 
 
 def unet(depth: int, num_classes: int, group_norm_depth: int = 32, activation_func: str = 'relu'):
@@ -89,6 +110,9 @@ def unet(depth: int, num_classes: int, group_norm_depth: int = 32, activation_fu
 
     # We will give the results in reversed order.
     encoder_results.reverse()
+
+    # Decoder and encoder must have the same depth
+    i //= 2
 
     for d in range(depth):
         decoder_inputs = {
