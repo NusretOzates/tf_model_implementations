@@ -1,5 +1,5 @@
 import keras
-from keras.layers import Concatenate, Conv2D, Conv2DTranspose, MaxPool2D, GroupNormalization, Activation, Layer, Input
+from keras.src.layers import Concatenate, Conv2D, Conv2DTranspose, MaxPooling2D, GroupNormalization, Activation, Layer, Input
 
 keras.mixed_precision.set_global_policy("mixed_float16")
 
@@ -14,7 +14,7 @@ class EncoderBlock(Layer):
         self.conv_2 = Conv2D(filters, kernel_size=(3, 3), padding='same')
         self.normalization_2 = GroupNormalization(group_norm_depth)
         self.activation_2 = Activation(activation_func)
-        self.max_pool = MaxPool2D()
+        self.max_pool = MaxPooling2D()
 
         self.filters = filters
         self.group_norm_depth = group_norm_depth
